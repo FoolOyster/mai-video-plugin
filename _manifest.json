@@ -1,0 +1,28 @@
+{
+  "manifest_version": 1,
+  "name": "视频生成插件(mai-video-plugin)",
+  "version": "0.1.0",
+  "description": "兼容 多种视频生成模型 API 的麦麦视频生成插件，支持文生视频与图生视频，仅支持QQ平台",
+  "author": {
+    "name": "Fooloyster",
+    "url": "https://github.com/FoolOyster/mai-video-plugin"
+  },
+  "license": "MIT",
+  "host_application": {
+    "min_version": "0.10.0"
+  },
+  "homepage_url": "https://github.com/FoolOyster/mai-video-plugin",
+  "repository_url": "https://github.com/FoolOyster/mai-video-plugin",
+  "keywords": [
+    "video",
+    "ai",
+    "multimedia"
+  ],
+  "categories": [
+    "Video",
+    "Multimedia",
+    "Entertainment"
+  ],
+  "default_locale": "CN",
+  "locales_path": "_locales"
+}
