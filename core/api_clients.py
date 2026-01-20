@@ -373,7 +373,9 @@ class ApiClient:
             api_key = model_config.get("api_key", "").replace("Bearer ", "")
             model_name = model_config.get("model", "grok-video-3")  # 使用最新模型
             base_url = model_config.get("base_url", "https://api.vectorengine.ai/v1").rstrip('/')
+            resolution = model_config.get("resolution", None)
             aspect_ratio = model_config.get("aspect_ratio", None)
+            orientation = model_config.get("orientation", None)
         
             # 构建API端点
             CREATE_URL = f"{base_url}/video/create"
@@ -387,12 +389,17 @@ class ApiClient:
             # 构建请求内容
             payload = {
                 "model": model_name,
-                "prompt": prompt
+                "prompt": prompt,
             }
 
+            # 添加部分请求内容
+            if resolution:
+                payload["size"] = resolution
             # 如果有设置视频比例
             if aspect_ratio:
                 payload["aspect_ratio"] = aspect_ratio
+            if orientation:
+                payload["orientation"] = orientation
 
             # 如果有输入图片，添加到请求中
             if input_image:

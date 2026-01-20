@@ -211,11 +211,18 @@ class VideoGenerationCommand(BaseCommand):
         elif api_format == "vectorengine":
             if command == "video":
                 aspect_ratio = None
+                orientation = None
             elif command == "video-l":
-                aspect_ratio = "3:2" if model=="grok" else "16:9"
+                aspect_ratio = "16:9" if ("veo3" in model) else "3:2"
+                orientation = "landscape" if ("sora-2" in model) else None
             elif command == "video-p":
-                aspect_ratio = "2:3" if model=="grok" else "9:16"
-            model_config["aspect_ratio"] = aspect_ratio
+                aspect_ratio = "9:16" if ("veo3" in model) else "2:3"
+                orientation = "portrait" if ("sora-2" in model) else None
+            if "veo" in model:
+                model_config["resolution"] = None
+            model_config["aspect_ratio"] = None if ("veo2" in model or "sora" in model) else aspect_ratio
+            model_config["orientation"] = orientation
+
         return model_config
         
     def _download_and_encode_base64(self, video_url: str) -> Tuple[bool, str]:
