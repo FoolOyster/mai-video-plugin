@@ -32,7 +32,7 @@ class VideoPlugin(BasePlugin):
     config_schema: dict = {
         "plugin": {
             "name": ConfigField(type=str, default="mai_video_plugin", description="基于 Sora API （不定期更新其他API接口）的视频生成插件，支持文生视频与图生视频", required=True),
-            "config_version": ConfigField(type=str, default="1.0.0", description="插件配置版本号"),
+            "config_version": ConfigField(type=str, default="0.1.0", description="插件配置版本号"),
             "enabled": ConfigField(type=bool, default=False, description="是否启用插件，开启后可使用视频功能")
         },
         "components": {
@@ -126,3 +126,4 @@ class VideoPlugin(BasePlugin):
         components.append((VideoGenerationCommand.get_command_info(), VideoGenerationCommand))
 
         return components
+
