@@ -83,8 +83,8 @@ class VideoGenerationCommand(BaseCommand):
         # 检查是否启用调试信息
         enable_upload_image = self.get_config("image_uploader.enabled", False)
         try:
-            # 如果有图片
-            if input_image_base64:
+            # 如果有图片且开启对象储存服务
+            if input_image_base64 and enable_upload_image:
                 # 实例化上传器,并转为url
                 storage_uploader = TempImageUploader(
                     provider=self.get_config("image_uploader.provider","cos"),
@@ -94,8 +94,7 @@ class VideoGenerationCommand(BaseCommand):
                     region=self.get_config("image_uploader.region","region"),
                     endpoint=self.get_config("image_uploader.endpoint","endpoint"),
                 )
-                if enable_upload_image:
-                    input_image_url = storage_uploader.upload_base64_image(input_image_base64)
+                input_image_url = storage_uploader.upload_base64_image(input_image_base64)
         except Exception as e:
             logger.error(f"{self.log_prefix} 图片上传错误: {e}")
 
@@ -123,8 +122,6 @@ class VideoGenerationCommand(BaseCommand):
         # 显示开始信息
         if enable_debug:
             await self.send_text(f"正在使用模型 {model_id} 进行生成视频，请稍候...")
-
-        logger.info(f"self: {vars(self)}")
 
         try:
             api_client = ApiClient(self)
