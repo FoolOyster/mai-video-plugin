@@ -36,6 +36,10 @@
 - `cos-python-sdk-v5`
 - `boto3` / `botocore`
 
+```bash
+pip install -r requirements.txt
+```
+
 > 插件本体还使用了 `requests`、`aiohttp` 等库（通常在宿主环境中已存在）。
 
 ---
@@ -76,7 +80,7 @@ HOST = "127.0.0.1"
 PORT = 5700
 ```
 
-插件会通过 Napcat HTTP API 调用：
+插件会通过 Napcat HTTP 服务端 API 调用：
 - 私聊：`/send_private_msg`
 - 群聊：`/send_group_msg`
 
@@ -231,4 +235,3 @@ support_option = "3"
 ## License
 
 MIT License © 2026 FoolOyster
-```
