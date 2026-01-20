@@ -11,7 +11,7 @@ class VideoPlugin(BasePlugin):
 
     # 插件基本信息
     plugin_name = "mai_video_plugin"
-    plugin_version = "1.0.0"  # 插件版本号
+    plugin_version = "0.1.0"  # 插件版本号
     plugin_author = "FoolOyster"  # 插件作者
     enable_plugin = True  # 启用插件
     dependencies = []  # 插件依赖列表（目前为空）
@@ -124,4 +124,5 @@ class VideoPlugin(BasePlugin):
         components = []  # 先设置个列表，提升扩张性
         components.append((VideoConfigCommand.get_command_info(), VideoConfigCommand))
         components.append((VideoGenerationCommand.get_command_info(), VideoGenerationCommand))
+
         return components
