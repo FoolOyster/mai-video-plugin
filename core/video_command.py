@@ -318,7 +318,7 @@ class VideoGenerationCommand(BaseCommand):
         proxy_url = self.get_config("proxy.url", "http://127.0.0.1:7890")
         proxy = proxy_url if proxy_enabled else None
 
-        timeout = aiohttp.ClientTimeout(total=180)
+        timeout = aiohttp.ClientTimeout(total=240)
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.get(video_url, proxy=proxy) as resp:
@@ -534,3 +534,4 @@ class VideoConfigCommand(BaseCommand):
             return user_id in admin_users
         except Exception:
             return False
+
