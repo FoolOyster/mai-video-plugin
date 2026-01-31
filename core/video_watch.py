@@ -81,7 +81,7 @@ class VideoWatcher:
         proxy_url = self.action.get_config("proxy.url", "http://127.0.0.1:7890")
         proxy = proxy_url if proxy_enabled else None
 
-        timeout = aiohttp.ClientTimeout(total=180)
+        timeout = aiohttp.ClientTimeout(total=240)
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.get(video_url, proxy=proxy) as resp:
@@ -221,3 +221,4 @@ class VideoWatcher:
     @staticmethod
     def _is_url(value: str) -> bool:
         return isinstance(value, str) and value.startswith(("http://", "https://"))
+
