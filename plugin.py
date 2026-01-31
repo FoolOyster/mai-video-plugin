@@ -5,125 +5,261 @@ from src.plugin_system import BasePlugin, register_plugin, ComponentInfo
 
 from .core.video_command import VideoGenerationCommand, VideoConfigCommand
 
-@register_plugin # 注册插件
+
+@register_plugin
 class VideoPlugin(BasePlugin):
-    """视频生成插件"""
+    """视频生成插件。"""
 
-    # 插件基本信息
     plugin_name = "mai_video_plugin"
-    plugin_version = "0.1.0"  # 插件版本号
-    plugin_author = "FoolOyster"  # 插件作者
-    enable_plugin = True  # 启用插件
-    dependencies = []  # 插件依赖列表（目前为空）
-    python_dependencies = []  # Python依赖列表（目前为空）
-    config_file_name = "config.toml"  # 配置文件名
+    plugin_version = "0.2.0"
+    plugin_author = "FoolOyster"
+    enable_plugin = True
+    dependencies = []
+    python_dependencies = []
+    config_file_name = "config.toml"
 
-    # 配置节描述
     config_section_descriptions = {
         "plugin": "插件启用配置",
-        "components": "组件启用配置",
-        "napcat": "Napcat HTTP服务器（正向），用于发送视频",
+        "components": "命令行为与限制",
         "logging": "日志配置",
-        "image_uploader": "对象存储(COS / OSS / R2)，将消息中的图片上传到对象储存提供访问图片链接",
-        "models": "多模型配置，每个模型都有独立的参数设置"
+        "proxy": "HTTP 代理配置",
+        "api": "API 请求与轮询配置",
+        "video": "视频生成限制",
+        "circuit_breaker": "熔断器配置",
+        "image_uploader": "对象存储（图片临时上传）",
+        "video_watch": "麦麦看视频（让麦麦知道自己生成了什么视频）",
+        "models": "视频生成模型配置",
     }
 
-    # 使用ConfigField定义详细的配置Schema
     config_schema: dict = {
         "plugin": {
-            "name": ConfigField(type=str, default="mai_video_plugin", description="基于 Sora API （不定期更新其他API接口）的视频生成插件，支持文生视频与图生视频", required=True),
-            "config_version": ConfigField(type=str, default="0.1.0", description="插件配置版本号"),
-            "enabled": ConfigField(type=bool, default=False, description="是否启用插件，开启后可使用视频功能")
+            "name": ConfigField(
+                type=str,
+                default="mai_video_plugin",
+                description="视频生成插件",
+                required=True,
+            ),
+            "config_version": ConfigField(
+                type=str, default="0.2.0", description="配置版本"
+            ),
+            "enabled": ConfigField(
+                type=bool, default=False, description="是否启用插件"
+            ),
         },
         "components": {
-            "enable_debug_info": ConfigField(type=bool, default=False, description="是否启用调试信息显示，关闭后仅显示图片结果和错误信息"),
-            "command_model": ConfigField(type=str, default="model1", description="Command组件使用的模型ID"),
-            "max_requests": ConfigField(type=int, default=3, description="同一时间最多可有的视频任务数量（务必是正整数），数量越大内存要求越高"),
+            "enable_debug_info": ConfigField(
+                type=bool, default=False, description="是否向用户显示调试信息"
+            ),
+            "command_model": ConfigField(
+                type=str, default="model1", description="/video 使用的默认模型ID"
+            ),
+            "max_requests": ConfigField(
+                type=int,
+                default=3,
+                description="全局最大并发任务数",
+            ),
+            "max_requests_per_user": ConfigField(
+                type=int,
+                default=1,
+                description="单用户最大并发任务数",
+            ),
+            "rate_limit_window_seconds": ConfigField(
+                type=int,
+                default=120,
+                description="限流窗口（秒）",
+            ),
+            "max_requests_per_window": ConfigField(
+                type=int,
+                default=3,
+                description="单用户窗口内最大请求数",
+            ),
             "admin_users": ConfigField(
                 type=list,
                 default=[],
-                description="有权限使用配置管理命令的管理员用户列表，请填写字符串形式的用户ID"
-            )
-        },
-        "napcat": {
-            "HOST": ConfigField(type=str, default="127.0.0.1", description="Napcat HTTP服务器（正向）地址"),
-            "PORT": ConfigField(type=int, default=5700, description="Napcat HTTP服务器（正向）端口")
+                description="管理员用户ID列表（字符串）",
+            ),
         },
         "logging": {
-            "level": ConfigField(type=str, default="INFO", description="日志记录级别，DEBUG显示详细信息", choices=["DEBUG", "INFO", "WARNING", "ERROR"]),
-            "prefix": ConfigField(type=str, default="[unified_video_Plugin]", description="日志前缀标识")
+            "level": ConfigField(
+                type=str,
+                default="INFO",
+                description="日志级别",
+                choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+            ),
+            "prefix": ConfigField(
+                type=str, default="[mai_video_plugin]", description="日志前缀"
+            ),
         },
         "proxy": {
-            "enabled": ConfigField(type=bool, default=False, description="是否启用代理。开启后所有API请求将通过代理服务器"),
-            "url": ConfigField(type=str, default="http://127.0.0.1:7890", description="代理服务器地址，格式：http://host:port。支持HTTP/HTTPS/SOCKS5代理"),
-            "timeout": ConfigField(type=int, default=60, description="代理连接超时时间（秒），建议30-120秒")
+            "enabled": ConfigField(
+                type=bool, default=False, description="是否启用代理"
+            ),
+            "url": ConfigField(
+                type=str,
+                default="http://127.0.0.1:7890",
+                description="代理地址（http/https/socks5）",
+            ),
+            "timeout": ConfigField(
+                type=int, default=60, description="代理超时（秒）"
+            ),
+        },
+        "api": {
+            "request_timeout_seconds": ConfigField(
+                type=int, default=120, description="API 请求超时"
+            ),
+            "submit_max_retries": ConfigField(
+                type=int, default=2, description="提交请求最大重试次数"
+            ),
+            "submit_backoff_seconds": ConfigField(
+                type=int, default=2, description="退避基准秒数"
+            ),
+            "poll_interval_seconds": ConfigField(
+                type=int, default=5, description="轮询间隔"
+            ),
+            "poll_timeout_seconds": ConfigField(
+                type=int, default=900, description="轮询超时上限"
+            ),
+            "poll_max_attempts": ConfigField(
+                type=int, default=0, description="轮询最大次数（0=不限）"
+            ),
+        },
+        "video": {
+            "max_prompt_length": ConfigField(
+                type=int, default=800, description="描述最大长度"
+            ),
+            "max_image_mb": ConfigField(
+                type=int, default=8, description="输入图片最大大小（MB）"
+            ),
+            "max_video_mb_for_base64": ConfigField(
+                type=int,
+                default=24,
+                description="base64 编码视频最大大小（MB）",
+            ),
+            "allow_url_send": ConfigField(
+                type=bool,
+                default=True,
+                description="允许 URL 直发（发送时长较长），关闭时自动改成base64格式发送（发送内存占用较大）",
+            ),
+            "url_send_fallback_to_download": ConfigField(
+                type=bool,
+                default=True,
+                description="URL 直发失败时回退到下载base64然后发送（allow_url_send开启下有效）",
+            ),
+        },
+        "circuit_breaker": {
+            "enabled": ConfigField(
+                type=bool, default=True, description="是否启用熔断"
+            ),
+            "failure_threshold": ConfigField(
+                type=int, default=5, description="触发熔断的失败次数"
+            ),
+            "recovery_seconds": ConfigField(
+                type=int, default=120, description="熔断恢复时间（秒）"
+            ),
+            "half_open_max_success": ConfigField(
+                type=int, default=2, description="半开状态成功次数"
+            ),
         },
         "image_uploader": {
-            "enabled": ConfigField(type=bool, default=False, description="是否启用对象储存服务。关闭后使用图生视频功能时向模型提供base64格式图片而不是图片url链接。"),
-            "provider": ConfigField(type=str, default="cos", description="对象储存服务提供商，cos：腾讯云，oss：阿里云，r2：Cloudflare R2",choices=["cos", "oss", "r2"]),
-            "access_key_id": ConfigField(type=str, default="access_key_id", description="存储桶权限用户access_key_id"),
-            "secret_access_key": ConfigField(type=str, default="secret_access_key", description="存储桶权限用户secret_access_key"),
-            "region": ConfigField(type=str, default="region", description="存储桶所属地域"),
-            "bucket_name": ConfigField(type=str, default="bucket_name", description="存储桶名称"),
-            "endpoint": ConfigField(type=str, default="endpoint", description="存储桶Endpoint（地域节点），腾讯云可以为空"),
+            "enabled": ConfigField(
+                type=bool,
+                default=False,
+                description="是否启用对象存储临时上传图片",
+            ),
+            "provider": ConfigField(
+                type=str,
+                default="cos",
+                description="对象存储服务商",
+                choices=["cos", "oss", "r2"],
+            ),
+            "access_key_id": ConfigField(
+                type=str, default="access_key_id", description="Access Key ID"
+            ),
+            "secret_access_key": ConfigField(
+                type=str, default="secret_access_key", description="Secret Access Key"
+            ),
+            "region": ConfigField(type=str, default="region", description="区域"),
+            "bucket_name": ConfigField(
+                type=str, default="bucket_name", description="桶名称"
+            ),
+            "endpoint": ConfigField(
+                type=str, default="endpoint", description="Endpoint（可选）"
+            ),
+        },
+        "video_watch": {
+            "enabled": ConfigField(
+                type=bool,
+                default=False,
+                description="是否启用麦麦看视频，关闭则麦麦不知道自己生成的视频内容",
+            ),
+            "visual_style": ConfigField(
+                type=str,
+                default="请用中文描述这个视频的内容。请留意其主题，直观感受，输出为一段平文本，最多30字",
+                description="麦麦识别视频规则",
+            ),
+            "model_identifier": ConfigField(
+                type=str, default="gemini-3-flash-preview", description="看视频模型（请选择能识别视频的模型，目前只支持gemini的模型）",
+            ),
+            "client_type": ConfigField(
+                type=str, 
+                default="gemini", 
+                description="客户端类型",
+                choices=["gemini"],
+            ),
+            "base_url": ConfigField(
+                type=str, default="https://generativelanguage.googleapis.com/v1beta", description="基础URL"
+            ),
+            "api_key": ConfigField(
+                type=str, default="sk-...", description="API Key"
+            ),
         },
         "models": {},
-        # 基础模型配置
         "models.model1": {
-            "name": ConfigField(type=str, default="OpenAI-Sora2模型", description="模型显示名称，在模型列表中展示"),
+            "name": ConfigField(
+                type=str, default="OpenAI Sora", description="模型显示名称"
+            ),
             "base_url": ConfigField(
                 type=str,
                 default="https://api.openai.com/v1",
-                description="API服务地址。示例: OpenAI=https://api.openai.com/v1, 硅基=https://api.siliconflow.cn/v1, 豆包=https://ark.cn-beijing.volces.com/api/v3, 向量引擎=https://api.vectorengine.ai/v1 (必需)",
-                required=True
+                description="API 基础地址",
+                required=True,
             ),
             "api_key": ConfigField(
                 type=str,
                 default="xxxxxxxxxxxxxxxxxxxxxx",
-                description="API密钥",
-                required=True
+                description="API 密钥",
+                required=True,
             ),
             "format": ConfigField(
                 type=str,
                 default="openai",
-                description="API格式。openai=通用格式（sora2，veo），siliconflow=硅基格式，doubao=豆包格式，vectorengine=向量引擎统一视频格式",
-                choices=["openai", "siliconflow", "doubao", "vectorengine"]
+                description="API 格式",
+                choices=["openai", "siliconflow", "doubao", "vectorengine"],
             ),
-            "model": ConfigField(
-                type=str,
-                default="sora-2",
-                description="模型名称"
-            ),
+            "model": ConfigField(type=str, default="sora-2", description="模型名称"),
             "support_option": ConfigField(
                 type=str,
                 default="3",
-                description="模型支持的功能，1：仅支持文生视频，2：仅支持图生视频，3：同时支持文生视频和图生视频",
-                choices=["1", "2", "3"]
+                description="1=仅文生，2=仅图生，3=文生+图生",
+                choices=["1", "2", "3"],
             ),
             "seconds": ConfigField(
-                type=str,
-                default="10",
-                description="视频生成时长，默认为10秒，视频支持时长因模型而异（8 / 10 / 15），有些模型时长限定"
+                type=str, default="10", description="视频时长（秒）"
             ),
             "resolution": ConfigField(
                 type=str,
                 default="720p",
-                description="视频分辨率，有些模型分辨率固定",
-                choices=["480p","720p", "1080p"]
+                description="分辨率",
+                choices=["480p", "720p", "1080p"],
             ),
             "watermark": ConfigField(
-                type=bool,
-                default=False,
-                description="是否添加AI水印，有些视频模型默认没水印"
+                type=bool, default=False, description="是否添加水印"
             ),
-        }
+        },
     }
 
-    def get_plugin_components(self) -> List[Tuple[ComponentInfo, Type]]: # 获取插件组件
-        """返回插件包含的组件列表"""
-        components = []  # 先设置个列表，提升扩张性
+    def get_plugin_components(self) -> List[Tuple[ComponentInfo, Type]]:
+        components = []
         components.append((VideoConfigCommand.get_command_info(), VideoConfigCommand))
         components.append((VideoGenerationCommand.get_command_info(), VideoGenerationCommand))
-
         return components
-
