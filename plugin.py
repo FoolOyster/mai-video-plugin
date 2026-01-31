@@ -194,7 +194,7 @@ class VideoPlugin(BasePlugin):
             ),
             "visual_style": ConfigField(
                 type=str,
-                default="请用中文描述这个视频的内容。请留意其主题，直观感受，输出为一段平文本，最多30字",
+                default="请用中文描述这个视频的内容。请留意其主题，直观感受，输出为一段平文本，最多50字",
                 description="麦麦识别视频规则",
             ),
             "model_identifier": ConfigField(
