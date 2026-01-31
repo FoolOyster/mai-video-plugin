@@ -1,237 +1,200 @@
 # mai-video-plugin（麦麦视频生成插件）
 
-兼容多种“视频生成模型 API”的麦麦插件，支持 **文生视频** 与 **图生视频**（从消息中取最近一张图片作为参考图）。
-当前仅适配 **QQ 平台**，视频发送依赖 **Napcat HTTP 正向服务器**。
+面向 MaiBot（麦麦）的视频生成插件，统一适配多家视频生成 API，支持文生视频与图生视频，并提供并发/限流/熔断/代理等工程能力。当前版本对接 QQ 平台消息流（见 manifest 描述）。
 
-- 插件名：`mai_video_plugin`
-- 插件入口：`VideoPlugin`（见 `plugin.py`）
-- License：MIT
+## 功能特点
 
----
+- 多平台 API 适配：`openai` / `siliconflow` / `doubao` / `vectorengine`
+- 文生视频 / 图生视频（可自动读取最近图片）
+- 命令级横屏/竖屏/默认比例
+- 全局并发 + 单用户并发限制
+- 请求限流（时间窗）
+- 可选熔断器保护（失败自动熔断）
+- 代理支持（HTTP/HTTPS/SOCKS5）
+- 可选对象存储临时上传图片（OSS/COS/R2）
+- 可选「麦麦看视频」：生成视频后由多模态模型生成简短描述，让麦麦知道自己生成了什么视频
+- 无需额外开启napcat网络配置
 
-## 功能特性
+## 运行环境
 
-- 文生视频：`/video <描述>`
-- 图生视频：在发送命令时消息中带图（或引用近期带图消息），插件会自动取图进行图生视频
-- 横屏 / 竖屏：`/video-l`（landscape）、`/video-p`（portrait）
-- 多模型配置：支持多个模型配置并可在运行时切换
-- 多种 API 格式适配：
-  - `openai`（通用：Sora2 / Veo 等风格接口）
-  - `siliconflow`
-  - `doubao`
-  - `vectorengine`
-- 可选对象存储图床：COS / OSS / Cloudflare R2
-  （用于图生视频时把 base64 图片上传成临时 URL，提高兼容性）
-- 可选代理：支持 HTTP/HTTPS/SOCKS5 代理转发 API 请求
+- MaiBot 版本：`>= 0.11.0`
+- Python 依赖：见 `requirements.txt`
 
----
+## 安装与启用（示例流程）
 
-## 安装与依赖
-
-### Python 依赖
-
-如需启用对象存储上传（COS/OSS/R2），需要安装 `requirements.txt` 中依赖：
-
-- `oss2`
-- `cos-python-sdk-v5`
-- `boto3` / `botocore`
+1. 将插件目录放入 MaiBot 的插件目录(plugins)。
+2. 安装依赖：
 
 ```bash
 pip install -r requirements.txt
 ```
 
-> 插件本体还使用了 `requests`、`aiohttp` 等库（通常在宿主环境中已存在）。
+3. 在插件配置中启用插件（`plugin.enabled = true`）。
+4. 配置至少一个模型（`models.model1` 或自定义 ID），并设置 `components.command_model` 为默认模型。
+5. 重启 MaiBot。
 
----
 
-## 配置说明（config.toml）
-
-插件使用 `config_schema` 定义配置（见 `plugin.py`），关键配置如下：
-
-### 1) 启用插件
-
-```toml
-[plugin]
-enabled = true
-```
-
-### 2) 组件配置
-
-```toml
-[components]
-enable_debug_info = false
-command_model = "model1"
-max_requests = 3
-admin_users = ["12345678"]
-```
-
-字段说明：
-
-- `enable_debug_info`：输出更多调试信息
-- `command_model`：`/video` 默认使用的模型 ID
-- `max_requests`：全局并发视频任务数（越大越吃内存）
-- `admin_users`：可使用管理命令（set/reset/config）的管理员 QQ 号列表（字符串）
-
-### 3) Napcat 配置（用于发送视频）
-
-```toml
-[napcat]
-HOST = "127.0.0.1"
-PORT = 5700
-```
-
-插件会通过 Napcat HTTP 服务端 API 调用：
-- 私聊：`/send_private_msg`
-- 群聊：`/send_group_msg`
-
-### 4) 日志
-
-```toml
-[logging]
-level = "INFO" # DEBUG/INFO/WARNING/ERROR
-prefix = "[unified_video_Plugin]"
-```
-
-### 5) 代理（可选）
-
-```toml
-[proxy]
-enabled = false
-url = "http://127.0.0.1:7890"
-timeout = 60
-```
-
-开启后：API 请求与下载视频会走代理（`requests` + `aiohttp`）。
-
-### 6) 对象存储图床（可选）
-
-```toml
-[image_uploader]
-enabled = false
-provider = "cos" # cos/oss/r2
-access_key_id = "xxxxx"
-secret_access_key = "xxxxx"
-region = "ap-guangzhou"
-bucket_name = "your-bucket"
-endpoint = ""
-```
-
-- `enabled=false` 时：图生视频直接把 base64 图片传给模型（某些平台可能不支持）
-- `enabled=true` 时：会上传到 `tmp_images/`，生成有效期 1 小时的临时 URL
-
-### 7) 模型配置（多模型）
-
-插件默认提供 `models.model1` 的基础配置模板（见 `plugin.py`）：
-
-```toml
-[models]
-
-[models.model1]
-name = "OpenAI-Sora2模型"
-base_url = "https://api.openai.com/v1"
-api_key = "xxxxxxxx"
-format = "openai" # openai/siliconflow/doubao/vectorengine
-model = "sora-2"
-support_option = "3" # 1=仅文生视频 2=仅图生视频 3=都支持
-seconds = "10"
-resolution = "720p" # 480p/720p/1080p（用于 size 推导）
-watermark = false
-```
-
-你也可以继续添加 `model2`、`model3`：
-
-```toml
-[models.model2]
-name = "硅基 Wan2.2"
-base_url = "https://api.siliconflow.cn/v1"
-api_key = "xxxx"
-format = "siliconflow"
-model = "Wan-AI/Wan2.2-I2V-A14B"
-support_option = "3"
-```
-
----
-
-## 使用方法（QQ）
+## 使用方式
 
 ### 生成视频
 
-- 默认比例（由模型或接口自适应）：
-  - `/video 一只小猫在雨夜的霓虹灯街道奔跑，电影质感`
-- 横屏：
-  - `/video-l 一辆跑车穿越沙漠公路，镜头跟拍`
-- 竖屏：
-  - `/video-p 少女在樱花树下回头微笑，柔光，慢动作`
+- `/video <描述>`：默认比例
+- `/video-l <描述>`：横屏
+- `/video-p <描述>`：竖屏
 
-### 图生视频
+### 插件相关命令
 
-在发送 `/video ...` 时带上一张图片（或引用最近含图消息），插件会自动取最近图片作为输入图：
-- 若启用 `image_uploader.enabled=true`：图片会先上传成临时 URL，再交给模型
-- 否则：直接以 base64 方式传入模型（部分平台可能不兼容）
+- `/video list` 或 `/video models`：列出可用模型
+- `/video set <模型ID>`：切换运行时默认模型（仅管理员可用）
+- `/video config`：查看当前配置与模型（仅管理员可用）
+- `/video reset`：重置运行时覆盖（仅管理员可用）
+- `/video help`：帮助说明
 
----
+> 管理员用户需在 `components.admin_users` 中配置用户 ID。
 
-## 配置管理命令（管理员）
+## 配置说明（config.toml）
 
-命令入口：`VideoConfigCommand`（`core/video_command.py`）
+下面按配置段说明字段含义。
 
-- `/video list` 或 `/video models`：列出模型
-- `/video config`：查看当前运行配置（是否被运行时覆盖）
-- `/video set <模型ID>`：运行时切换 `/video` 使用的模型（不写文件，重启会恢复）
-- `/video reset`：清除运行时覆盖，恢复默认
-- `/video help`：帮助
+### [plugin]
 
-权限判断：`components.admin_users` 中包含当前用户 QQ 号才可执行 set/reset/config。
+- `name`：插件名称
+- `config_version`：配置版本
+- `enabled`：是否启用插件
 
----
+### [components]
 
-## 视频比例与参数映射
+- `enable_debug_info`：是否向用户显示调试信息
+- `command_model`：`/video` 默认模型 ID（例如 `model1`）
+- `max_requests`：全局最大并发任务数
+- `max_requests_per_user`：单用户最大并发任务数
+- `rate_limit_window_seconds`：限流时间窗（秒）
+- `max_requests_per_window`：单用户窗口内最大请求数
+- `admin_users`：管理员用户 ID 列表（字符串数组）
 
-插件根据命令自动调整参数（见 `core/video_command.py`）：
+### [logging]
 
-- `openai`：
-  - `/video-l`：`size=1280x720`（720p）或 `1792x1024`（1080p）
-  - `/video-p`：`size=720x1280`（720p）或 `1024x1792`（1080p）
-- `siliconflow`：
-  - `/video-l`：`image_size=1280x720`
-  - `/video-p`：`image_size=720x1280`
-- `doubao`：
-  - `/video-l`：`ratio=16:9`
-  - `/video-p`：`ratio=9:16`
-- `vectorengine`：
-  - `/video-l`：`aspect_ratio=16:9`（部分模型会走 `3:2` 分支）
-  - `/video-p`：`aspect_ratio=9:16`（部分模型会走 `2:3` 分支）
+- `level`：日志级别（`DEBUG`/`INFO`/`WARNING`/`ERROR`）
+- `prefix`：日志前缀
 
----
+### [proxy]
 
-## 工作流程（实现概览）
+- `enabled`：是否启用代理
+- `url`：代理地址（`http/https/socks5`）
+- `timeout`：代理超时（秒）
 
-- `VideoGenerationCommand`
-  - 解析命令 `/video(-l|-p)`
-  - 从消息/历史消息中提取图片（如有）
-  - （可选）上传图片到 COS/OSS/R2 得到临时 URL
-  - 调用 `ApiClient.generate_video()` 走不同平台格式
-  - 轮询任务状态拿到视频 URL
-  - 下载视频并转成 `base64://...`
-  - 使用 Napcat 发送视频到群/私聊
+### [api]
 
----
+- `request_timeout_seconds`：API 请求超时
+- `submit_max_retries`：提交请求最大重试次数
+- `submit_backoff_seconds`：退避基准秒数（指数退避）
+- `poll_interval_seconds`：轮询间隔
+- `poll_timeout_seconds`：轮询超时上限
+- `poll_max_attempts`：轮询最大次数（`0` 表示不限）
 
-## 常见问题（FAQ）
+### [video]
 
-1) 为什么我发了命令但一直在等？
-- 大多数视频模型生成需要几分钟，插件会轮询任务状态（每 5 秒一次）。
+- `max_prompt_length`：描述最大长度
+- `max_image_mb`：输入图片最大大小（MB）
+- `max_video_mb_for_base64`：下载视频转 base64 的最大大小（MB）
+- `allow_url_send`：允许视频 URL 直发（发送更快；关闭则强制 base64 发送）
+- `url_send_fallback_to_download`：URL 直发失败是否回退下载+base64
 
-2) 发送失败提示“风控/风险控制”？
-- Napcat 返回风控时插件会停止重试，这是 QQ 侧风控限制，通常只能更换号/降低频率/换发送方式。
+### [circuit_breaker]
 
-3) 图生视频不生效？
-- 确认消息里确实带图或引用了含图消息；
-- 若模型只支持文生视频，请把该模型的 `support_option` 设置为正确值或切换模型；
-- 某些平台不接受 base64 图片，建议开启 `image_uploader.enabled=true`。
+- `enabled`：是否启用熔断
+- `failure_threshold`：触发熔断的失败次数
+- `recovery_seconds`：熔断恢复时间（秒）
+- `half_open_max_success`：半开状态成功次数（达到后恢复）
 
----
+### [image_uploader]
+
+- `enabled`：是否启用对象存储临时上传图片
+- `provider`：对象存储服务商（`oss`/`cos`/`r2`）
+- `access_key_id`：Access Key ID
+- `secret_access_key`：Secret Access Key
+- `region`：区域
+- `bucket_name`：桶名称
+- `endpoint`：Endpoint（可选）
+
+### [video_watch]
+
+- `enabled`：是否启用「麦麦看视频」
+- `visual_style`：视频描述提示词（建议中文、短句）
+- `model_identifier`：看视频模型标识（当前仅支持 Gemini 系列）
+- `client_type`：客户端类型（目前仅支持 `gemini`）
+- `base_url`：Gemini 接口基础 URL
+- `api_key`：Gemini API Key
+
+### [models]
+
+- 模型集合根节点（空对象即可）。
+- 具体模型以 `models.<模型ID>` 形式配置，例如 `models.model1`。
+
+### [models.model1]（示例）
+
+- `name`：模型显示名称
+- `base_url`：API 基础地址
+- `api_key`：API 密钥
+- `format`：API 格式（`openai`/`siliconflow`/`doubao`/`vectorengine`）
+- `model`：模型名称/ID
+- `support_option`：`1=仅文生`，`2=仅图生`，`3=文生+图生`
+- `seconds`：视频时长（秒）
+- `resolution`：分辨率（`480p`/`720p`/`1080p`）
+- `watermark`：是否添加水印
+
+## 示例配置片段
+
+```toml
+[plugin]
+name = "mai_video_plugin"
+config_version = "0.2.0"
+enabled = true
+
+[components]
+command_model = "model1"
+max_requests = 3
+max_requests_per_user = 1
+rate_limit_window_seconds = 120
+max_requests_per_window = 3
+admin_users = ["12345678"]
+
+[models]
+
+[models.model1]
+name = "OpenAI Sora"
+base_url = "https://api.openai.com/v1"
+api_key = "YOUR_API_KEY"
+format = "openai"
+model = "sora-2"
+support_option = "3"
+seconds = "10"
+resolution = "720p"
+watermark = false
+```
+
+## 目录结构
+
+```
+.
+├── core
+│   ├── api_clients.py      # 多平台 API 适配与轮询
+│   ├── image_uploader.py   # 对象存储临时上传图片
+│   ├── image_utils.py      # 读取消息中的图片
+│   ├── video_command.py    # 命令处理与流程控制
+│   └── video_watch.py      # 麦麦看视频（多模态描述）
+├── _manifest.json          # 插件元信息
+├── plugin.py               # 插件入口与配置 schema
+├── requirements.txt        # 依赖列表
+└── __init__.py
+```
+
+## 说明与提示
+
+- 若 `allow_url_send=true` 但平台不支持直发视频，可开启 `url_send_fallback_to_download` 以确保发送成功（代价是更高内存占用）。
+- 有些视频生成模型可能不支持base64格式图片上传或此格式图片上传质量差，可启用 `image_uploader`，请确保对象存储权限与临时 URL 有效期配置正确。
+- 若启用 `video_watch`，需要具备可用的 Gemini API Key 与可识别视频的模型。
 
 ## License
 
-MIT License © 2026 FoolOyster
+MIT
