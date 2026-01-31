@@ -141,10 +141,11 @@ class VideoWatcher:
         if not ok:
             return False, str(data)
 
+        #logger.info(f"输出内容：{data}")
         text = self._extract_text_from_gemini(data)
         if not text:
             return False, "模型未返回有效描述"
-        return True, self._clean_description(text)
+        return True, text
 
     async def _post_json(
         self,
@@ -177,10 +178,9 @@ class VideoWatcher:
                 return ""
             content = candidates[0].get("content") or {}
             parts = content.get("parts") or []
-            for part in parts:
-                text = part.get("text")
-                if text:
-                    return text.strip()
+            text = parts[-1]['text']
+            if text:
+                return text
         except Exception:
             return ""
         return ""
