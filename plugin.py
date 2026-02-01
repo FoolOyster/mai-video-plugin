@@ -11,7 +11,7 @@ class VideoPlugin(BasePlugin):
     """视频生成插件。"""
 
     plugin_name = "mai_video_plugin"
-    plugin_version = "0.2.0"
+    plugin_version = "0.2.1"
     plugin_author = "FoolOyster"
     enable_plugin = True
     dependencies = []
@@ -27,7 +27,7 @@ class VideoPlugin(BasePlugin):
         "video": "视频生成限制",
         "circuit_breaker": "熔断器配置",
         "image_uploader": "对象存储（图片临时上传）",
-        "video_watch": "麦麦看视频（让麦麦知道自己生成了什么视频）",
+        "video_watch": "麦麦看视频，让麦麦知道自己生成了什么视频（测试功能）",
         "models": "视频生成模型配置",
     }
 
@@ -194,7 +194,7 @@ class VideoPlugin(BasePlugin):
             ),
             "visual_style": ConfigField(
                 type=str,
-                default="请用中文描述这个视频的内容。请留意其主题，直观感受，输出为一段平文本，最多50字",
+                default="请用中文描述这个视频的内容。请留意其主题，直观感受，输出为一段平文本，最多50字（只输出中文描述内容）",
                 description="麦麦识别视频规则",
             ),
             "model_identifier": ConfigField(

@@ -13,6 +13,8 @@ from .video_watch import VideoWatcher
 
 from src.plugin_system.base.base_command import BaseCommand
 from src.common.logger import get_logger
+from src.plugin_system import database_api
+from src.common.database.database_model import Messages
 
 logger = get_logger("video_command")
 
@@ -197,10 +199,11 @@ class VideoGenerationCommand(BaseCommand):
 
                 send_ok = await self._maibot_send_video(chat_id, "videourl", video_ref, video_description)
                 if send_ok:
+                    await self._change_database_message(chat_id, video_description)
                     await self.send_text("视频已生成并发送")
                     return True, "ok", True
                 if not fallback_download:
-                    await self.send_text("发送失败")
+                    await self.send_text(f"视频发送失败，请自行下载观看：{video_ref}")
                     return False, "send_failed", True
 
             # URL 直发失败时回退到下载+base64（受大小限制）
@@ -224,9 +227,10 @@ class VideoGenerationCommand(BaseCommand):
 
             send_ok = await self._maibot_send_video(chat_id, "video", encoded_result, video_description)
             if send_ok:
+                await self._change_database_message(chat_id, video_description)
                 await self.send_text("视频已生成并发送")
                 return True, "ok", True
-            await self.send_text("发送失败")
+            await self.send_text(f"视频发送失败，请自行下载观看：{video_ref}")
             return False, "send_failed", True
 
         except Exception as e:
@@ -303,6 +307,24 @@ class VideoGenerationCommand(BaseCommand):
 
     def _is_url(self, value: str) -> bool:
         return isinstance(value, str) and value.startswith(("http://", "https://"))
+    
+    async def _change_database_message(self, chat_id: str, video_description: str):
+        """修改数据库中视频消息的processed_plain_text字段内容"""
+        messages = await database_api.db_query(
+            Messages,
+            query_type="get",
+            filters={"chat_id": chat_id},
+            limit=1,
+            order_by=["-time"]
+        )
+        video_message_id = messages[0]["message_id"]
+        record = await database_api.db_save(
+            Messages,
+            {"processed_plain_text": video_description},
+            key_field="message_id",
+            key_value=video_message_id
+        )
+        logger.debug(f"修改消息：{record}")
 
     async def _download_and_encode_base64(self, video_url: str) -> Tuple[bool, str]:
         # 已是 base64 或非法 URL 直接返回
@@ -534,4 +556,3 @@ class VideoConfigCommand(BaseCommand):
             return user_id in admin_users
         except Exception:
             return False
-
