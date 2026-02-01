@@ -12,12 +12,12 @@
 - 可选熔断器保护（失败自动熔断）
 - 代理支持（HTTP/HTTPS/SOCKS5）
 - 可选对象存储临时上传图片（OSS/COS/R2）
-- 可选「麦麦看视频」：生成视频后由多模态模型生成简短描述，让麦麦知道自己生成了什么视频
+- 可选「麦麦看视频」：生成视频后由多模态模型生成简短描述，让麦麦知道自己生成了什么视频（测试功能）
 - 无需额外开启napcat网络配置
 
 ## 运行环境
 
-- MaiBot 版本：`>= 0.11.0`
+- MaiBot 版本：`>= 0.12.0`
 - Python 依赖：见 `requirements.txt`
 
 ## 安装与启用（示例流程）
@@ -173,27 +173,12 @@ resolution = "720p"
 watermark = false
 ```
 
-## 目录结构
-
-```
-.
-├── core
-│   ├── api_clients.py      # 多平台 API 适配与轮询
-│   ├── image_uploader.py   # 对象存储临时上传图片
-│   ├── image_utils.py      # 读取消息中的图片
-│   ├── video_command.py    # 命令处理与流程控制
-│   └── video_watch.py      # 麦麦看视频（多模态描述）
-├── _manifest.json          # 插件元信息
-├── plugin.py               # 插件入口与配置 schema
-├── requirements.txt        # 依赖列表
-└── __init__.py
-```
 
 ## 说明与提示
 
 - 若 `allow_url_send=true` 但平台不支持直发视频，可开启 `url_send_fallback_to_download` 以确保发送成功（代价是更高内存占用）。
 - 有些视频生成模型可能不支持base64格式图片上传或此格式图片上传质量差，可启用 `image_uploader`，请确保对象存储权限与临时 URL 有效期配置正确。
-- 若启用 `video_watch`，需要具备可用的 Gemini API Key 与可识别视频的模型。
+- 若启用 `video_watch`，需要具备可用的 Gemini API Key 与可识别视频的模型。注意：此麦麦看视频功能未完善，当你以生成的视频作为“引消息”时，在麦麦提示词中该“引用消息”为视频文件信息而非视频描述。
 
 ## License
 
