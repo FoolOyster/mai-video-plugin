@@ -13,8 +13,6 @@ from .video_watch import VideoWatcher
 
 from src.plugin_system.base.base_command import BaseCommand
 from src.common.logger import get_logger
-from src.plugin_system import database_api
-from src.common.database.database_model import Messages
 
 logger = get_logger("video_command")
 
@@ -36,14 +34,6 @@ class VideoGenerationCommand(BaseCommand):
             return self._config_overrides[key]
         return super().get_config(key, default)
 
-    def _get_chat_id(self) -> Optional[str]:
-        """获取当前聊天流ID"""
-        try:
-            chat_stream = self.message.chat_stream if self.message else None
-            return chat_stream.stream_id if chat_stream else None
-        except Exception:
-            return None
-
     def _get_user_id(self) -> Optional[str]:
         try:
             return str(self.message.message_info.user_info.user_id)
@@ -62,10 +52,11 @@ class VideoGenerationCommand(BaseCommand):
     def _get_user_semaphore(self, user_id: str) -> asyncio.Semaphore:
         per_user = self.get_config("components.max_requests_per_user", 1)
         per_user = abs(int(per_user)) + int(per_user == 0)
-        if user_id not in self._user_semaphores:
+        is_admin = user_id in self.get_config("components.admin_users", [])
+        if user_id not in self._user_semaphores and not is_admin:
             self._user_semaphores[user_id] = asyncio.Semaphore(per_user)
-        return self._user_semaphores[user_id]
-
+        return self._user_semaphores[user_id] if not is_admin else None
+    
     def _rate_limited(self, user_id: str) -> bool:
         window = int(self.get_config("components.rate_limit_window_seconds", 120))
         limit = int(self.get_config("components.max_requests_per_window", 3))
@@ -79,28 +70,29 @@ class VideoGenerationCommand(BaseCommand):
         return False
 
     async def execute(self) -> Tuple[bool, Optional[str], bool]:
-        semaphore = self._get_video_semaphore()
-        if semaphore.locked():
-            await self.send_text(
-                f"当前任务繁忙，请稍后再试（最大并发：{self.get_config('components.max_requests', 3)}）"
-            )
-            return False, "concurrency_limited", True
-
+        """执行视频生成·并发限制"""
         user_id = self._get_user_id()
-        if user_id and user_id not in self.get_config("components.admin_users", []):
+        is_admin = user_id in self.get_config("components.admin_users", [])
+        if user_id and not is_admin:
             if self._rate_limited(user_id):
                 await self.send_text("请求过于频繁，请稍后再试。")
                 return False, "rate_limited", True
+            
+        semaphore = self._get_video_semaphore()
+        user_semaphore = self._get_user_semaphore(user_id) if user_id and not is_admin else None
 
-        user_semaphore = self._get_user_semaphore(user_id) if user_id else None
-
+        have_waited = False
+        if semaphore.locked() or user_semaphore and user_semaphore.locked():
+            await self.send_text("视频生成任务排队中...")
+            have_waited = True
+        
         async with semaphore:
             if user_semaphore:
                 async with user_semaphore:
-                    return await self._execute_inner()
-            return await self._execute_inner()
+                    return await self._execute_inner(have_waited)
+            return await self._execute_inner(have_waited)
 
-    async def _execute_inner(self) -> Tuple[bool, Optional[str], bool]:
+    async def _execute_inner(self, have_waited: bool) -> Tuple[bool, Optional[str], bool]:
         logger.info(f"{self.log_prefix} 执行 /video 命令")
 
         model_id = self.get_config("components.command_model", "model1")
@@ -153,7 +145,8 @@ class VideoGenerationCommand(BaseCommand):
             await self.send_text("当前模型不支持文生视频。")
             return False, "text_not_supported", True
 
-        await self.send_text("已开始生成视频，请稍候...")
+        await asyncio.sleep(int(have_waited))
+        await self.send_text("已开始生成视频，请稍候...", have_waited, self.message_recv_to_db_message())
 
         enable_debug = self.get_config("components.enable_debug_info", False)
         if enable_debug:
@@ -181,8 +174,6 @@ class VideoGenerationCommand(BaseCommand):
             video_description = "[视频]"
             watcher = VideoWatcher(self) if enable_watch_video else None
 
-            chat_id = self._get_chat_id()
-
             # 优先尝试 URL 直发
             if self._is_url(video_ref) and allow_url_send:
                 if watcher:
@@ -197,9 +188,9 @@ class VideoGenerationCommand(BaseCommand):
                         if self.get_config("components.enable_debug_info", False):
                             await self.send_text(f"麦麦看视频失败：{watch_text}")
 
-                send_ok = await self._maibot_send_video(chat_id, "videourl", video_ref, video_description)
+                send_ok = await self.send_custom("videourl", video_ref, video_description)
                 if send_ok:
-                    await self._change_database_message(chat_id, video_description)
+                    await self._change_database_message(video_description)
                     await self.send_text("视频已生成并发送")
                     return True, "ok", True
                 if not fallback_download:
@@ -225,9 +216,9 @@ class VideoGenerationCommand(BaseCommand):
                     if self.get_config("components.enable_debug_info", False):
                         await self.send_text(f"麦麦看视频失败：{watch_text}")
 
-            send_ok = await self._maibot_send_video(chat_id, "video", encoded_result, video_description)
+            send_ok = await self.send_custom("video", encoded_result, video_description)
             if send_ok:
-                await self._change_database_message(chat_id, video_description)
+                await self._change_database_message(video_description)
                 await self.send_text("视频已生成并发送")
                 return True, "ok", True
             await self.send_text(f"视频发送失败，请自行下载观看：{video_ref}")
@@ -308,12 +299,14 @@ class VideoGenerationCommand(BaseCommand):
     def _is_url(self, value: str) -> bool:
         return isinstance(value, str) and value.startswith(("http://", "https://"))
     
-    async def _change_database_message(self, chat_id: str, video_description: str):
+    async def _change_database_message(self, video_description: str):
         """修改数据库中视频消息的processed_plain_text字段内容"""
+        from src.plugin_system import database_api
+        from src.common.database.database_model import Messages
         messages = await database_api.db_query(
             Messages,
             query_type="get",
-            filters={"chat_id": chat_id},
+            filters={"chat_id": self.message.chat_stream.stream_id},
             limit=1,
             order_by=["-time"]
         )
@@ -325,6 +318,7 @@ class VideoGenerationCommand(BaseCommand):
             key_value=video_message_id
         )
         logger.debug(f"修改消息：{record}")
+
 
     async def _download_and_encode_base64(self, video_url: str) -> Tuple[bool, str]:
         # 已是 base64 或非法 URL 直接返回
@@ -361,32 +355,74 @@ class VideoGenerationCommand(BaseCommand):
         except Exception as e:
             logger.error(f"{self.log_prefix} 下载失败: {e}")
             return False, "下载失败"
-        
-    async def _maibot_send_video(self, chat_id: str, message_type: str, content: str, video_description: str):
-        """发送消息到指定聊天"""
-        try:
-            from src.plugin_system.apis import send_api
-            
-            success = await send_api.custom_to_stream(
-                message_type=message_type,
-                content=content,
-                stream_id=chat_id,
-                display_message=video_description,
-                typing=False,
-                storage_message=True,
-                show_log=True
-            )
-            
-            if success:
-                logger.debug(f"{self.log_prefix} 视频已发送: [{message_type}]")
-            else:
-                logger.error(f"{self.log_prefix} 视频发送失败: [{message_type}]")
 
-            return success
-                
-        except Exception as e:
-            logger.error(f"{self.log_prefix} 发送异常: {e}")
-            return False
+    def message_recv_to_db_message(self):  # -> DatabaseMessages:
+        """将 MessageRecv 对象转换为 DatabaseMessages 对象"""
+        from json import dumps
+        from src.common.data_models.database_data_model import DatabaseMessages
+
+        message_obj = self.message
+        msg_info = message_obj.message_info
+        user_info = msg_info.user_info
+        group_info = msg_info.group_info
+
+        chat_stream = getattr(message_obj, "chat_stream", None)
+        chat_id = getattr(chat_stream, "stream_id", "") if chat_stream else ""
+        chat_info_platform = getattr(chat_stream, "platform", None) or (msg_info.platform or "")
+        chat_info_create_time = getattr(chat_stream, "create_time", 0.0) if chat_stream else 0.0
+        chat_info_last_active_time = getattr(chat_stream, "last_active_time", 0.0) if chat_stream else 0.0
+
+        chat_info_user = getattr(chat_stream, "user_info", None) if chat_stream else user_info
+        effective_group_info = getattr(chat_stream, "group_info", None) if chat_stream else group_info
+
+        def _dump(val):
+            return dumps(val, ensure_ascii=False) if val is not None and not isinstance(val, str) else val
+
+        reply = getattr(message_obj, "reply", None)
+        reply_to = getattr(message_obj, "reply_to", None) or (
+            getattr(getattr(reply, "message_info", None), "message_id", None) if reply else None
+        )
+
+        return DatabaseMessages(
+            message_id=msg_info.message_id or "",
+            time=msg_info.time or 0.0,
+            chat_id=chat_id,
+            reply_to=reply_to,
+            interest_value=getattr(message_obj, "interest_value", None),
+            key_words=_dump(getattr(message_obj, "key_words", None)),
+            key_words_lite=_dump(getattr(message_obj, "key_words_lite", None)),
+            is_mentioned=getattr(message_obj, "is_mentioned", None),
+            is_at=getattr(message_obj, "is_at", None),
+            reply_probability_boost=getattr(message_obj, "reply_probability_boost", None),
+            processed_plain_text=message_obj.processed_plain_text,
+            display_message=getattr(message_obj, "display_message", None),
+            priority_mode=getattr(message_obj, "priority_mode", None),
+            priority_info=_dump(getattr(message_obj, "priority_info", None)),
+            additional_config=_dump(getattr(msg_info, "additional_config", None)),
+            is_emoji=getattr(message_obj, "is_emoji", False),
+            is_picid=getattr(message_obj, "is_picid", False),
+            is_command=getattr(message_obj, "is_command", False),
+            intercept_message_level=getattr(message_obj, "intercept_message_level", 0),
+            is_notify=getattr(message_obj, "is_notify", False),
+            selected_expressions=_dump(getattr(message_obj, "selected_expressions", None)),
+            user_id=user_info.user_id or "",
+            user_nickname=user_info.user_nickname or "",
+            user_cardname=user_info.user_cardname,
+            user_platform=user_info.platform or "",
+            chat_info_group_id=effective_group_info.group_id if effective_group_info else None,
+            chat_info_group_name=effective_group_info.group_name if effective_group_info else None,
+            chat_info_group_platform=(
+                getattr(effective_group_info, "group_platform", None) if effective_group_info else None
+            ) or (getattr(effective_group_info, "platform", None) if effective_group_info else None),
+            chat_info_user_id=chat_info_user.user_id or "",
+            chat_info_user_nickname=chat_info_user.user_nickname or "",
+            chat_info_user_cardname=chat_info_user.user_cardname,
+            chat_info_user_platform=chat_info_user.platform or "",
+            chat_info_stream_id=chat_id,
+            chat_info_platform=chat_info_platform or "",
+            chat_info_create_time=chat_info_create_time,
+            chat_info_last_active_time=chat_info_last_active_time,
+        )
 
 
 class VideoConfigCommand(BaseCommand):

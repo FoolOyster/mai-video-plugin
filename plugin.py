@@ -11,7 +11,7 @@ class VideoPlugin(BasePlugin):
     """视频生成插件。"""
 
     plugin_name = "mai_video_plugin"
-    plugin_version = "0.2.1"
+    plugin_version = "0.2.2"
     plugin_author = "FoolOyster"
     enable_plugin = True
     dependencies = []
@@ -56,22 +56,22 @@ class VideoPlugin(BasePlugin):
             "max_requests": ConfigField(
                 type=int,
                 default=3,
-                description="全局最大并发任务数",
+                description="全局最大视频生成任务数",
             ),
             "max_requests_per_user": ConfigField(
                 type=int,
                 default=1,
-                description="单用户最大并发任务数",
+                description="单用户最大视频生成任务数",
             ),
             "rate_limit_window_seconds": ConfigField(
                 type=int,
                 default=120,
-                description="限流窗口（秒）",
+                description="单用户请求间隔限制（秒）",
             ),
             "max_requests_per_window": ConfigField(
                 type=int,
                 default=3,
-                description="单用户窗口内最大请求数",
+                description="单用户限制时间内最大请求数限制",
             ),
             "admin_users": ConfigField(
                 type=list,
@@ -138,7 +138,7 @@ class VideoPlugin(BasePlugin):
             "allow_url_send": ConfigField(
                 type=bool,
                 default=True,
-                description="允许 URL 直发（发送时长较长），关闭时自动改成base64格式发送（发送内存占用较大）",
+                description="允许 视频URL 直发，关闭时自动改成base64格式发送（发送内存占用较大）",
             ),
             "url_send_fallback_to_download": ConfigField(
                 type=bool,
@@ -194,7 +194,7 @@ class VideoPlugin(BasePlugin):
             ),
             "visual_style": ConfigField(
                 type=str,
-                default="请用中文描述这个视频的内容。请留意其主题，直观感受，输出为一段平文本，最多50字（只输出中文描述内容）",
+                default="请用中文描述这个视频的内容。请留意其主题，直观感受，输出为一段平文本，最多50字",
                 description="麦麦识别视频规则",
             ),
             "model_identifier": ConfigField(
