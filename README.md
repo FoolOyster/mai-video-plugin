@@ -5,10 +5,10 @@
 ## 功能特点
 
 - 多平台 API 适配：`openai` / `siliconflow` / `doubao` / `vectorengine`
-- 文生视频 / 图生视频（可自动读取最近图片）
+- 文生视频 / 图生视频（读取引用消息中第一张图片，仅支持首帧生成）
 - 命令级横屏/竖屏/默认比例
-- 全局并发 + 单用户并发限制
-- 请求限流（时间窗）
+- 全局并发 + 单用户并发限制（多出的任务排队等待）
+- 请求限流（规定时间内规定最大请求数量）
 - 可选熔断器保护（失败自动熔断）
 - 代理支持（HTTP/HTTPS/SOCKS5）
 - 可选对象存储临时上传图片（OSS/COS/R2）
@@ -66,10 +66,10 @@ pip install -r requirements.txt
 
 - `enable_debug_info`：是否向用户显示调试信息
 - `command_model`：`/video` 默认模型 ID（例如 `model1`）
-- `max_requests`：全局最大并发任务数
-- `max_requests_per_user`：单用户最大并发任务数
-- `rate_limit_window_seconds`：限流时间窗（秒）
-- `max_requests_per_window`：单用户窗口内最大请求数
+- `max_requests`：全局最大并发任务数（多出的任务排队等待）
+- `max_requests_per_user`：每个用户一次性只能生成 规定数量 个视频（多出的任务排队等待）
+- `rate_limit_window_seconds`：请求间隔限制（下一项的“规定时间”）
+- `max_requests_per_window`：每个用户规定时间内只能请求 规定数量 个视频生成任务
 - `admin_users`：管理员用户 ID 列表（字符串数组）
 
 ### [logging]
@@ -96,9 +96,9 @@ pip install -r requirements.txt
 
 - `max_prompt_length`：描述最大长度
 - `max_image_mb`：输入图片最大大小（MB）
-- `max_video_mb_for_base64`：下载视频转 base64 的最大大小（MB）
-- `allow_url_send`：允许视频 URL 直发（发送更快；关闭则强制 base64 发送）
-- `url_send_fallback_to_download`：URL 直发失败是否回退下载+base64
+- `max_video_mb_for_base64`：下载视频转 base64 的最大大小（MB）（视频大小大于这个时拒绝下载发送）
+- `allow_url_send`：允许视频 URL 直发，关闭则强制 base64 发送（占用内存较大）
+- `url_send_fallback_to_download`：URL 直发失败是否回退下载base64
 
 ### [circuit_breaker]
 
@@ -176,7 +176,7 @@ watermark = false
 
 ## 说明与提示
 
-- 若 `allow_url_send=true` 但平台不支持直发视频，可开启 `url_send_fallback_to_download` 以确保发送成功（代价是更高内存占用）。
+- 麦麦内置两种视频发送方式：videourl和video，前者传入视频url即可，内存占用小；后者要传入base64格式视频，内存占用较大。若 `allow_url_send=true` 但平台不支持直发视频，可开启 `url_send_fallback_to_download` 以确保发送成功（代价是更高内存占用）。
 - 有些视频生成模型可能不支持base64格式图片上传或此格式图片上传质量差，可启用 `image_uploader`，请确保对象存储权限与临时 URL 有效期配置正确。
 - 若启用 `video_watch`，需要具备可用的 Gemini API Key 与可识别视频的模型。注意：此麦麦看视频功能尚未完善，当你以生成的视频作为“引用消息”时，在麦麦提示词中该“引用消息”为视频文件信息而非视频描述。
 
