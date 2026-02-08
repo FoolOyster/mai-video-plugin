@@ -14,16 +14,11 @@
   "homepage_url": "https://github.com/FoolOyster/mai-video-plugin",
   "repository_url": "https://github.com/FoolOyster/mai-video-plugin",
   "keywords": [
-    "video",
-    "generation",
+    "视频",
     "视频生成",
-    "内容生成",
-    "text-to-video",
     "文生视频",
-    "image-to-video",
     "图生视频",
     "AI",
-    "multimedia",
     "多媒体"
   ],
   "categories": [
@@ -34,3 +29,4 @@
   "locales_path": "_locales"
 
 }
+
